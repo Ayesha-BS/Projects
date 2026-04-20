@@ -53,7 +53,7 @@ npm run test:accessibility:full
 Run using sitemap-discovered URLs:
 
 ```bash
-SITEMAP_URL=https://recordatirarediseases.de/sitemap.xml npm run test:accessibility:sitemap
+SITEMAP_URL=https://example.com/sitemap.xml npm run test:accessibility:sitemap
 ```
 
 Optional sitemap controls:
