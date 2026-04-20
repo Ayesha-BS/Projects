@@ -1,0 +1,41 @@
+{
+  "name": "generic-accessibility-qa",
+  "version": "1.0.0",
+  "description": "Generic automation QA project for accessibility testing on LinkedIn-style web applications.",
+  "main": "index.js",
+  "scripts": {
+    "test": "playwright test",
+    "test:ui": "playwright test --ui",
+    "test:headed": "playwright test --headed",
+    "test:accessibility": "playwright test tests/accessibility.spec.js",
+    "test:accessibility:keyboard": "playwright test tests/keyboard-accessibility.spec.js",
+    "test:accessibility:lowvision": "playwright test tests/low-vision-reflow.spec.js",
+    "test:accessibility:full": "playwright test tests/accessibility.spec.js tests/keyboard-accessibility.spec.js tests/low-vision-reflow.spec.js",
+    "sitemap:load": "node scripts/load-sitemap-pages.js",
+    "sitemap:load:quick": "set SITEMAP_PROFILE=quick&& node scripts/load-sitemap-pages.js",
+    "sitemap:load:pr": "set SITEMAP_PROFILE=pr&& node scripts/load-sitemap-pages.js",
+    "sitemap:load:full": "set SITEMAP_PROFILE=full&& node scripts/load-sitemap-pages.js",
+    "test:accessibility:sitemap": "npm run sitemap:load && npm run test:accessibility:full",
+    "test:accessibility:sitemap:quick": "npm run sitemap:load:quick && npm run test:accessibility:full",
+    "test:accessibility:sitemap:pr": "npm run sitemap:load:pr && npm run test:accessibility:full",
+    "test:accessibility:sitemap:full": "npm run sitemap:load:full && npm run test:accessibility:full",
+    "test:accessibility:quick": "npm run test:accessibility && npm run report:accessibility:developer",
+    "test:accessibility:pr": "npm run test:accessibility:sitemap:pr && npm run report:accessibility:developer",
+    "report:accessibility:developer": "node scripts/generate-dev-action-report.js",
+    "accessibility:ci": "npm run test:accessibility:sitemap:full && npm run report:accessibility:developer",
+    "report": "playwright show-report"
+  },
+  "keywords": [
+    "qa",
+    "automation",
+    "accessibility",
+    "playwright",
+    "axe"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@axe-core/playwright": "^4.10.2",
+    "@playwright/test": "^1.53.0"
+  }
+}
