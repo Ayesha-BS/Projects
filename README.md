@@ -50,18 +50,6 @@ Run full accessibility automation pack:
 npm run test:accessibility:full
 ```
 
-Run quick profile (fast feedback + final PDF):
-
-```bash
-npm run test:accessibility:quick
-```
-
-Run PR profile (medium sitemap coverage + final PDF):
-
-```bash
-npm run test:accessibility:pr
-```
-
 Run using sitemap-discovered URLs:
 
 ```bash
@@ -69,9 +57,8 @@ SITEMAP_URL=https://recordatirarediseases.de/sitemap.xml npm run test:accessibil
 ```
 
 Optional sitemap controls:
-- `SITEMAP_MAX_URLS` (default `25`)
+- `SITEMAP_MAX_URLS` (default `0`, which means load full sitemap)
 - `SITEMAP_TIMEOUT_MS` (default `30000`)
-- `SITEMAP_PROFILE` (`quick`=5, `pr`=15, `full`=`SITEMAP_MAX_URLS`)
 
 Accessibility gate controls:
 - `ACCESSIBILITY_FAIL_ON_CRITICAL` (`true`/`false`)

@@ -2,9 +2,8 @@ const fs = require("fs/promises");
 const path = require("path");
 
 const SITEMAP_URL = process.env.SITEMAP_URL;
-const PROFILE = (process.env.SITEMAP_PROFILE || "full").toLowerCase();
-const PROFILE_LIMITS = { quick: 5, pr: 15, full: Number(process.env.SITEMAP_MAX_URLS || 25) };
-const MAX_URLS = PROFILE_LIMITS[PROFILE] || PROFILE_LIMITS.full;
+const MAX_URLS = Number(process.env.SITEMAP_MAX_URLS || 0);
+const UNLIMITED = !Number.isFinite(MAX_URLS) || MAX_URLS <= 0;
 const TIMEOUT_MS = Number(process.env.SITEMAP_TIMEOUT_MS || 30000);
 
 function sanitizeName(url, index) {
@@ -43,7 +42,7 @@ async function readSitemapUrls(rootSitemapUrl) {
   const pageUrls = [];
   const rootHost = new URL(rootSitemapUrl).host;
 
-  while (urlQueue.length && pageUrls.length < MAX_URLS) {
+  while (urlQueue.length && (UNLIMITED || pageUrls.length < MAX_URLS)) {
     const current = urlQueue.shift();
     if (!current || visited.has(current)) {
       continue;
@@ -65,7 +64,7 @@ async function readSitemapUrls(rootSitemapUrl) {
           }
         } else if (!pageUrls.includes(loc)) {
           pageUrls.push(loc);
-          if (pageUrls.length >= MAX_URLS) {
+          if (!UNLIMITED && pageUrls.length >= MAX_URLS) {
             break;
           }
         }
@@ -96,7 +95,11 @@ async function main() {
   const outputPath = path.resolve(process.cwd(), "tests", "helpers", "pagesToScan.generated.json");
   await fs.writeFile(outputPath, JSON.stringify(pages, null, 2), "utf8");
 
-  console.log(`Generated ${pages.length} sitemap pages at ${outputPath} (profile=${PROFILE})`);
+  console.log(
+    `Generated ${pages.length} sitemap pages at ${outputPath} (max_urls=${
+      UNLIMITED ? "all" : MAX_URLS
+    })`
+  );
 }
 
 main().catch((error) => {
