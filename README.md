@@ -1,6 +1,6 @@
-# Generic Accessibility QA Project (LinkedIn-Ready)
+# Generic Accessibility QA Project
 
-This project is a reusable automation QA starter to run accessibility checks against LinkedIn (or any web app by changing `BASE_URL`).
+This project is a reusable automation QA starter to run accessibility checks against any web app by changing `BASE_URL`.
 
 ## What this includes
 
@@ -26,7 +26,7 @@ cp .env.example .env
 
 Environment variables:
 
-- `BASE_URL` (default: `https://www.linkedin.com`)
+- `BASE_URL` (default: `https://example.com`)
 - `LINKEDIN_EMAIL` (optional, for authenticated flows)
 - `LINKEDIN_PASSWORD` (optional, for authenticated flows)
 
