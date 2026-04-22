@@ -5,6 +5,10 @@ const path = require("path");
 const { writeAccessibilityReport } = require("./helpers/accessibilityReport");
 const { PAGES_TO_SCAN } = require("./helpers/pagesToScan");
 const { waitForPageReady } = require("./helpers/pageReady");
+const {
+  shouldUseDeepCrawl,
+  performDeepInteractionCrawl
+} = require("./helpers/deepInteractionCrawl");
 
 const FAIL_ON_CRITICAL = String(process.env.ACCESSIBILITY_FAIL_ON_CRITICAL || "true") !== "false";
 const MAX_SERIOUS = Number(process.env.ACCESSIBILITY_MAX_SERIOUS || 0);
@@ -106,6 +110,35 @@ async function enrichViolationsWithEvidence(page, pageName, blockingViolations) 
   return enriched;
 }
 
+function mergeViolations(baseViolations, deepViolations) {
+  const merged = new Map();
+
+  function upsertViolation(violation) {
+    const key = violation.id || "unknown-rule";
+    const existing = merged.get(key);
+    if (!existing) {
+      merged.set(key, { ...violation, nodes: [...(violation.nodes || [])] });
+      return;
+    }
+
+    const existingNodeKeys = new Set(
+      (existing.nodes || []).map((node) => (node.target || []).join("|"))
+    );
+    for (const node of violation.nodes || []) {
+      const nodeKey = (node.target || []).join("|");
+      if (!existingNodeKeys.has(nodeKey)) {
+        existing.nodes.push(node);
+        existingNodeKeys.add(nodeKey);
+      }
+    }
+  }
+
+  for (const violation of baseViolations || []) upsertViolation(violation);
+  for (const violation of deepViolations || []) upsertViolation(violation);
+
+  return Array.from(merged.values());
+}
+
 test.describe("Generic Accessibility Smoke", () => {
   for (const pageConfig of PAGES_TO_SCAN) {
     test(`${pageConfig.name} page should have no serious or critical violations`, async ({
@@ -119,17 +152,42 @@ test.describe("Generic Accessibility Smoke", () => {
 
       await waitForPageReady(page);
 
-      const accessibilityScanResults = await new AxeBuilder({ page })
+      const primaryScanResults = await new AxeBuilder({ page })
         .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
         .analyze();
 
-      const reportableViolations = accessibilityScanResults.violations.filter((violation) =>
+      let combinedViolations = [...primaryScanResults.violations];
+      if (shouldUseDeepCrawl()) {
+        const crawlActions = await performDeepInteractionCrawl(page);
+        if (crawlActions.length) {
+          test.info().annotations.push({
+            type: "deep-crawl",
+            description: `Deep crawl actions: ${crawlActions.length}`
+          });
+        }
+        try {
+          const deepScanResults = await new AxeBuilder({ page })
+            .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+            .analyze();
+          combinedViolations = mergeViolations(
+            primaryScanResults.violations,
+            deepScanResults.violations
+          );
+        } catch (error) {
+          test.info().annotations.push({
+            type: "deep-crawl-warning",
+            description: "Deep scan skipped due to page instability/timeouts"
+          });
+        }
+      }
+
+      const reportableViolations = combinedViolations.filter((violation) =>
         REPORT_IMPACTS.has((violation.impact || "").toLowerCase())
       );
-      const criticalViolations = accessibilityScanResults.violations.filter(
+      const criticalViolations = combinedViolations.filter(
         (violation) => (violation.impact || "") === "critical"
       );
-      const seriousViolations = accessibilityScanResults.violations.filter(
+      const seriousViolations = combinedViolations.filter(
         (violation) => (violation.impact || "") === "serious"
       );
       const violationsWithEvidence = await enrichViolationsWithEvidence(
@@ -142,7 +200,10 @@ test.describe("Generic Accessibility Smoke", () => {
         pageName: pageConfig.name,
         pagePath: pageConfig.path,
         url,
-        scanResults: accessibilityScanResults,
+        scanResults: {
+          ...primaryScanResults,
+          violations: combinedViolations
+        },
         reportViolations: violationsWithEvidence
       });
 

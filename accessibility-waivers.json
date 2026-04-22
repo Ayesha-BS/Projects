@@ -1,0 +1,12 @@
+{
+  "waivers": [
+    {
+      "rule": "color-contrast",
+      "urlContains": "/legacy",
+      "selectorContains": ".legacy-nav",
+      "owner": "Design System team",
+      "reason": "Legacy theme migration in progress",
+      "expiryDate": "2026-12-31"
+    }
+  ]
+}

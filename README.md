@@ -50,6 +50,8 @@ Run full accessibility automation pack:
 npm run test:accessibility:full
 ```
 
+Note: test commands auto-generate `reports/accessibility/final-accessibility-report.pdf` even when tests fail.
+
 Run using sitemap-discovered URLs:
 
 ```bash
@@ -66,6 +68,12 @@ Accessibility gate controls:
 - `ACCESSIBILITY_REPORT_IMPACTS` (default `critical,serious,moderate,minor`)
 - `ACCESSIBILITY_READY_SELECTORS` (default `main,header,nav`)
 - `ACCESSIBILITY_READY_TIMEOUT_MS` (default `12000`)
+- `ACCESSIBILITY_DEEP_CRAWL` (`true`/`false`, default `true`)
+- `ACCESSIBILITY_DEEP_CRAWL_MAX_ACTIONS` (default `20`)
+- `ACCESSIBILITY_DEEP_CRAWL_MAX_LOAD_MORE` (default `3`)
+- `ACCESSIBILITY_MAX_FOCUS_DELAY_MS` (default `250`)
+- `ACCESSIBILITY_KEYBOARD_TRAP_TIMEOUT_MS` (default `2000`)
+- `ACCESSIBILITY_MAX_DOM_GROWTH_RATIO` (default `0.4`)
 
 Open report:
 
@@ -97,6 +105,21 @@ Manual checklist template is available at:
 Additional automated suites:
 - `tests/keyboard-accessibility.spec.js` for keyboard tab navigation and focus indicator checks
 - `tests/low-vision-reflow.spec.js` for narrow viewport reflow checks aligned to zoom/low-vision concerns
+- `tests/accessibility-performance.spec.js` for DOM-shift, focus-delay, and keyboard-trap guardrails
+
+Waiver governance:
+- configure temporary exceptions in `accessibility-waivers.json`
+- required fields: `rule`, optional URL/selector matcher, `owner`, `reason`, `expiryDate`
+- report generation fails when waiver expiry has passed
+
+Issue ownership mapping:
+- report maps each finding to default teams (`Frontend Nav`, `Forms`, `Design System`, etc.) to speed triage
+
+Trend and quality score:
+- report includes new/existing/fixed/reopened and a weighted quality score (`100 - weighted issue score`)
+
+Cross-browser/mobile:
+- test projects run in `chromium-desktop`, `webkit-desktop`, and `mobile-chrome`
 
 Sitemap-generated pages are stored at:
 

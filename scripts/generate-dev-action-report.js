@@ -5,6 +5,7 @@ const { pathToFileURL } = require("url");
 const { chromium } = require("playwright");
 
 const HISTORY_DIR = path.resolve(process.cwd(), "reports", "accessibility-history");
+const WAIVERS_PATH = path.resolve(process.cwd(), "accessibility-waivers.json");
 
 function remediationHint(violation) {
   const id = (violation.id || "").toLowerCase();
@@ -92,6 +93,69 @@ function severityLabel(severity) {
   return "Low";
 }
 
+function mapIssueOwner(issueRule) {
+  const rule = String(issueRule || "").toLowerCase();
+  if (/landmark|region|heading-order|skip-link|link-name|listitem|nested-interactive/.test(rule)) {
+    return "Frontend Nav team";
+  }
+  if (/label|aria-input-field-name|input-image-alt|autocomplete-valid/.test(rule)) {
+    return "Forms team";
+  }
+  if (/color-contrast|focus|target-size|scrollable-region-focusable/.test(rule)) {
+    return "Design System team";
+  }
+  if (/aria|name-role-value|button-name/.test(rule)) {
+    return "UI Platform team";
+  }
+  return "Frontend Core team";
+}
+
+function readWaivers() {
+  return fs
+    .readFile(WAIVERS_PATH, "utf8")
+    .then((raw) => JSON.parse(raw))
+    .catch(() => ({ waivers: [] }));
+}
+
+function isIssueWaived(issue, waiver) {
+  const ruleOk = !waiver.rule || waiver.rule === issue.issueRule;
+  const urlOk = !waiver.urlContains || issue.url.includes(waiver.urlContains);
+  const selectorOk = !waiver.selectorContains || issue.selector.includes(waiver.selectorContains);
+  return ruleOk && urlOk && selectorOk;
+}
+
+function applyWaivers(issues, waiversConfig) {
+  const waivers = Array.isArray(waiversConfig?.waivers) ? waiversConfig.waivers : [];
+  const now = Date.now();
+  const expiredWaivers = [];
+  const activeWaivers = [];
+
+  for (const waiver of waivers) {
+    const expiry = waiver.expiryDate ? new Date(waiver.expiryDate).getTime() : NaN;
+    const isExpired = Number.isFinite(expiry) && expiry < now;
+    if (isExpired) expiredWaivers.push(waiver);
+    else activeWaivers.push(waiver);
+  }
+
+  const kept = [];
+  const waived = [];
+  for (const issue of issues) {
+    const matched = activeWaivers.find((waiver) => isIssueWaived(issue, waiver));
+    if (!matched) {
+      kept.push(issue);
+      continue;
+    }
+    waived.push({
+      signature: issue.signature,
+      owner: matched.owner || "Unassigned",
+      reason: matched.reason || "No reason provided",
+      expiryDate: matched.expiryDate || "N/A"
+    });
+  }
+
+  return { kept, waived, expiredWaivers };
+}
+
 async function generatePdfFromHtml(htmlPath, pdfPath) {
   const browser = await chromium.launch({ headless: true });
   try {
@@ -105,17 +169,6 @@ async function generatePdfFromHtml(htmlPath, pdfPath) {
     });
   } finally {
     await browser.close();
-  }
-}
-
-async function removeDirectoryContents(targetDir) {
-  try {
-    const names = await fs.readdir(targetDir);
-    await Promise.all(
-      names.map((name) => fs.rm(path.join(targetDir, name), { recursive: true, force: true }))
-    );
-  } catch (error) {
-    if (!error || error.code !== "ENOENT") throw error;
   }
 }
 
@@ -209,18 +262,21 @@ async function readPreviousBaseline() {
   try {
     const baselinePath = path.join(HISTORY_DIR, "latest-issues.json");
     const baseline = JSON.parse(await fs.readFile(baselinePath, "utf8"));
-    return Array.isArray(baseline.signatures) ? baseline.signatures : [];
+    return {
+      signatures: Array.isArray(baseline.signatures) ? baseline.signatures : [],
+      resolvedSignatures: Array.isArray(baseline.resolvedSignatures) ? baseline.resolvedSignatures : []
+    };
   } catch (error) {
-    return [];
+    return { signatures: [], resolvedSignatures: [] };
   }
 }
 
-async function writeBaseline(signatures) {
+async function writeBaseline(signatures, resolvedSignatures) {
   await fs.mkdir(HISTORY_DIR, { recursive: true });
   const baselinePath = path.join(HISTORY_DIR, "latest-issues.json");
   await fs.writeFile(
     baselinePath,
-    JSON.stringify({ updatedAt: new Date().toISOString(), signatures }, null, 2),
+    JSON.stringify({ updatedAt: new Date().toISOString(), signatures, resolvedSignatures }, null, 2),
     "utf8"
   );
 }
@@ -231,10 +287,24 @@ async function main() {
     throw new Error("No per-page reports found in reports/accessibility. Run accessibility tests first.");
   }
 
-  const dedupedIssues = buildDedupedIssues(reports);
-  const prevSignatures = await readPreviousBaseline();
-  const regression = computeRegression(dedupedIssues, prevSignatures);
-  await writeBaseline(dedupedIssues.map((issue) => issue.signature));
+  const waiversConfig = await readWaivers();
+  const dedupedIssuesRaw = buildDedupedIssues(reports).map((issue) => ({
+    ...issue,
+    ownerTeam: mapIssueOwner(issue.issueRule)
+  }));
+  const waiverResult = applyWaivers(dedupedIssuesRaw, waiversConfig);
+  const dedupedIssues = waiverResult.kept;
+
+  const previousBaseline = await readPreviousBaseline();
+  const regression = computeRegression(dedupedIssues, previousBaseline.signatures);
+  const currentSet = new Set(dedupedIssues.map((issue) => issue.signature));
+  const fixedSignatures = previousBaseline.signatures.filter((sig) => !currentSet.has(sig));
+  const resolvedSet = new Set([...(previousBaseline.resolvedSignatures || []), ...fixedSignatures]);
+  const reopened = dedupedIssues.filter((issue) => resolvedSet.has(issue.signature)).length;
+  await writeBaseline(
+    dedupedIssues.map((issue) => issue.signature),
+    Array.from(resolvedSet)
+  );
 
   const failOnCritical = String(process.env.ACCESSIBILITY_FAIL_ON_CRITICAL || "true") !== "false";
   const maxSerious = Number(process.env.ACCESSIBILITY_MAX_SERIOUS || 0);
@@ -244,6 +314,8 @@ async function main() {
   const criticalCount = dedupedIssues.filter((i) => i.severity === "critical").length;
   const seriousCount = dedupedIssues.filter((i) => i.severity === "serious").length;
   const gatePassed = (!failOnCritical || criticalCount === 0) && seriousCount <= maxSerious;
+  const weightedScore = highCount * 10 + mediumCount * 4 + lowCount;
+  const qualityScore = Math.max(0, 100 - weightedScore);
 
   const topRules = new Map();
   for (const issue of dedupedIssues) {
@@ -298,6 +370,7 @@ async function main() {
   html.push("<ol class='toc'>");
   html.push("<li>Executive Summary</li>");
   html.push("<li>Top 10 Priority Rules</li>");
+  html.push("<li>Coverage and Manual Testing Scope</li>");
   html.push("<li>Detailed Findings (Appendix)</li>");
   html.push("</ol>");
   html.push("</section>");
@@ -317,6 +390,10 @@ async function main() {
   html.push(`<tr><td><strong>Critical issues (raw)</strong></td><td>${criticalCount}</td></tr>`);
   html.push(`<tr><td><strong>Serious issues (raw)</strong></td><td>${seriousCount}</td></tr>`);
   html.push(`<tr><td><strong>Regression (new/existing/fixed)</strong></td><td>${regression.added} / ${regression.existing} / ${regression.fixed}</td></tr>`);
+  html.push(`<tr><td><strong>Reopened issues</strong></td><td>${reopened}</td></tr>`);
+  html.push(`<tr><td><strong>Quality score</strong></td><td>${qualityScore}/100</td></tr>`);
+  html.push(`<tr><td><strong>Waived issues (active)</strong></td><td>${waiverResult.waived.length}</td></tr>`);
+  html.push(`<tr><td><strong>Expired waivers</strong></td><td>${waiverResult.expiredWaivers.length}</td></tr>`);
   html.push(`<tr><td><strong>Gate config</strong></td><td>fail_on_critical=${failOnCritical}, max_serious=${maxSerious}</td></tr>`);
   html.push("</tbody></table>");
   html.push(
@@ -333,6 +410,29 @@ async function main() {
   html.push("</tbody></table>");
   html.push("</section>");
 
+  // Coverage and manual testing scope
+  html.push("<section class='section-break'>");
+  html.push("<h2>Coverage and Manual Testing Scope</h2>");
+  html.push("<h3>What this automation covers</h3>");
+  html.push("<ul>");
+  html.push("<li>Automated rule checks using axe for WCAG A/AA-aligned technical violations.</li>");
+  html.push("<li>Severity gating for critical and serious issues based on configured thresholds.</li>");
+  html.push("<li>Keyboard-focused checks for focus movement, visible focus signal, and trap guardrails.</li>");
+  html.push("<li>Low-vision reflow checks at narrow viewport, including page and container overflow detection.</li>");
+  html.push("<li>Deep interaction crawl to expose hidden UI states before secondary scanning.</li>");
+  html.push("<li>Consolidated triage output with evidence screenshots, rule metadata, and ownership hints.</li>");
+  html.push("</ul>");
+  html.push("<h3>What still needs manual testing</h3>");
+  html.push("<ul>");
+  html.push("<li>Screen reader behavior quality (NVDA, JAWS, VoiceOver), including announcement timing and context.</li>");
+  html.push("<li>Content quality validation, such as whether alt text and labels are meaningful to users.</li>");
+  html.push("<li>Task flow clarity and cognitive usability (instructions, wording, error comprehension).</li>");
+  html.push("<li>Real-world keyboard journey quality across complex workflows and modal/overlay transitions.</li>");
+  html.push("<li>Zoom/high-contrast usability and assistive technology compatibility across target platforms.</li>");
+  html.push("<li>Formal compliance sign-off requiring human accessibility review and policy interpretation.</li>");
+  html.push("</ul>");
+  html.push("</section>");
+
   // Appendix detailed findings
   html.push("<section class='section-break'>");
   html.push("<h2>Detailed Findings (Appendix)</h2>");
@@ -346,6 +446,7 @@ async function main() {
     html.push(`<div class="meta"><span class="label">Url-</span> ${htmlEscape(issue.url)}</div>`);
     html.push(`<div class="meta"><span class="label">Issue-</span> ${htmlEscape(issue.issueRule)} | ${htmlEscape(issue.issueSummary.replace(/\n/g, " "))}</div>`);
     html.push(`<div class="meta"><span class="label">Selector-</span> <span class="small">${htmlEscape(issue.selector)}</span></div>`);
+    html.push(`<div class="meta"><span class="label">Owner team-</span> ${htmlEscape(issue.ownerTeam)}</div>`);
     html.push(
       `<div class="meta"><span class="label">WCAG criteria-</span> ${htmlEscape(
         (issue.wcagCriteria || []).join(", ") || "Not specified"
@@ -367,12 +468,16 @@ async function main() {
   await fs.writeFile(htmlPath, html.join("\n"), "utf8");
   await generatePdfFromHtml(htmlPath, tempPdfPath);
 
-  await removeDirectoryContents(reportsBaseDir);
   await fs.mkdir(reportsBaseDir, { recursive: true });
   await fs.copyFile(tempPdfPath, finalPdfPath);
   await fs.rm(tempDir, { recursive: true, force: true });
 
   console.log(`Final accessibility report: ${finalPdfPath}`);
+  if (waiverResult.expiredWaivers.length > 0) {
+    throw new Error(
+      `Expired accessibility waivers found (${waiverResult.expiredWaivers.length}). Update accessibility-waivers.json.`
+    );
+  }
 }
 
 main().catch((error) => {

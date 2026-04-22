@@ -7,14 +7,17 @@
     "test": "playwright test",
     "test:ui": "playwright test --ui",
     "test:headed": "playwright test --headed",
-    "test:accessibility": "playwright test tests/accessibility.spec.js",
+    "test:accessibility": "node scripts/run-accessibility-with-report.js basic",
+    "test:accessibility:raw": "playwright test tests/accessibility.spec.js",
     "test:accessibility:keyboard": "playwright test tests/keyboard-accessibility.spec.js",
     "test:accessibility:lowvision": "playwright test tests/low-vision-reflow.spec.js",
-    "test:accessibility:full": "playwright test tests/accessibility.spec.js tests/keyboard-accessibility.spec.js tests/low-vision-reflow.spec.js",
+    "test:accessibility:performance": "playwright test tests/accessibility-performance.spec.js",
+    "test:accessibility:full": "node scripts/run-accessibility-with-report.js full",
+    "test:accessibility:full:raw": "playwright test tests/accessibility.spec.js tests/keyboard-accessibility.spec.js tests/low-vision-reflow.spec.js tests/accessibility-performance.spec.js",
     "sitemap:load": "node scripts/load-sitemap-pages.js",
-    "test:accessibility:sitemap": "npm run sitemap:load && npm run test:accessibility:full",
+    "test:accessibility:sitemap": "node scripts/run-accessibility-with-report.js sitemap",
     "report:accessibility:developer": "node scripts/generate-dev-action-report.js",
-    "accessibility:ci": "npm run test:accessibility:sitemap && npm run report:accessibility:developer",
+    "accessibility:ci": "node scripts/run-accessibility-with-report.js sitemap",
     "report": "playwright show-report"
   },
   "keywords": [
@@ -28,6 +31,7 @@
   "license": "MIT",
   "devDependencies": {
     "@axe-core/playwright": "^4.10.2",
-    "@playwright/test": "^1.53.0"
+    "@playwright/test": "^1.53.0",
+    "typescript": "^6.0.3"
   }
 }
