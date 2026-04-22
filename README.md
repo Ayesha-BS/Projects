@@ -75,6 +75,10 @@ Accessibility gate controls:
 - `ACCESSIBILITY_KEYBOARD_TRAP_TIMEOUT_MS` (default `2000`)
 - `ACCESSIBILITY_MAX_DOM_GROWTH_RATIO` (default `0.4`)
 
+Playwright timeout defaults:
+- local runs: `60000ms` per test
+- CI runs: `120000ms` per test
+
 Open report:
 
 ```bash
@@ -125,15 +129,15 @@ Sitemap-generated pages are stored at:
 
 `tests/helpers/pagesToScan.generated.json`
 
-Note: the final report command auto-cleans extra artifacts and keeps one PDF output.
+Note: the final report command keeps per-page JSON/Markdown artifacts and writes/updates `final-accessibility-report.pdf`.
 
 ## CI automation
 
-Nightly CI workflow is included at:
+Scheduled CI workflow is included at:
 
 `.github/workflows/accessibility-nightly.yml`
 
-It runs the full accessibility pipeline and uploads `final-accessibility-report.pdf` as an artifact.
+It runs the accessibility pipeline weekly (Monday 02:00 UTC) and uploads `final-accessibility-report.pdf` as an artifact.
 
 ## How to extend as a Smart QA
 

@@ -34,51 +34,12 @@ async function captureIssueScreenshot(page, pageName, violationId, nodeIndex, se
   const absolutePath = path.join(evidenceDir, fileName);
   const relativePath = `reports/accessibility/evidence/${fileName}`;
 
-  if (selector) {
-    try {
-      const locator = page.locator(selector).first();
-      if ((await locator.count()) > 0) {
-        await locator.scrollIntoViewIfNeeded().catch(() => {});
-        await locator.screenshot({ path: absolutePath });
-        return relativePath;
-      }
-    } catch (error) {
-      // Fallback to full-page highlight screenshot below.
-    }
-  }
-
-  if (selector) {
-    try {
-      await page.evaluate((sel) => {
-        const element = document.querySelector(sel);
-        if (!element) return;
-        element.setAttribute("data-accessibility-highlight", "true");
-        element.setAttribute(
-          "style",
-          `${element.getAttribute("style") || ""}; outline: 4px solid #d93025 !important; outline-offset: 3px !important;`
-        );
-      }, selector);
-      await page.screenshot({ path: absolutePath, fullPage: true });
-      await page.evaluate(() => {
-        const element = document.querySelector("[data-accessibility-highlight='true']");
-        if (!element) return;
-        element.removeAttribute("data-accessibility-highlight");
-        const style = element.getAttribute("style") || "";
-        const cleaned = style
-          .replace(/outline:\s*4px solid #d93025 !important;?/gi, "")
-          .replace(/outline-offset:\s*3px !important;?/gi, "")
-          .trim();
-        if (cleaned) element.setAttribute("style", cleaned);
-        else element.removeAttribute("style");
-      });
-      return relativePath;
-    } catch (error) {
-      // Continue to generic full-page fallback.
-    }
-  }
-
+  if (!selector) return null;
   try {
-    await page.screenshot({ path: absolutePath, fullPage: true });
+    const locator = page.locator(selector).first();
+    if ((await locator.count()) === 0) return null;
+    await locator.scrollIntoViewIfNeeded().catch(() => {});
+    await locator.screenshot({ path: absolutePath });
     return relativePath;
   } catch (error) {
     return null;

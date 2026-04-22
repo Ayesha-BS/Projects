@@ -1,4 +1,6 @@
 const { spawnSync } = require("child_process");
+const fs = require("fs");
+const path = require("path");
 
 function run(command) {
   const result = spawnSync(command, {
@@ -18,9 +20,19 @@ function stepsForMode(mode) {
   return ["npm run test:accessibility:raw"];
 }
 
+function clearEvidenceDirectory() {
+  const evidenceDir = path.resolve(process.cwd(), "reports", "accessibility", "evidence");
+  try {
+    fs.rmSync(evidenceDir, { recursive: true, force: true });
+  } catch (error) {
+    // Ignore cleanup errors; test run will recreate directory as needed.
+  }
+}
+
 function main() {
   const mode = (process.argv[2] || "basic").toLowerCase();
   const steps = stepsForMode(mode);
+  clearEvidenceDirectory();
 
   let exitCode = 0;
   for (const step of steps) {
